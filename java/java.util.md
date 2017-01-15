@@ -1,7 +1,7 @@
 
 - [Java学习笔记(类库介绍)](http://blog.csdn.net/llping2011/article/details/9952589)
 
-- **collections** 
+## **collections** 
 -
     如何遍历集合、删除集合元素
 	Iterator it = collection.iterator(); // 获得一个迭代子
