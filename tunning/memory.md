@@ -4,6 +4,9 @@
 2. [APT](../tools/apt.md)
 
 ## 频繁GC
+
+**分析工具和方法**
+
 0. 在Android Studio的android monitor查看GC情况
 1. 使用Android Device Monitor的工具Dump HPROF file两次，一次是GC之前，一次是GC之后，可以在ADM中手动触发Cause GC
 2. 使用hprof-conv转换hprof文件到MAT支持的格式
@@ -27,7 +30,9 @@
 		}
 
 2. 绝对不要手动调用 Message#recycle。因为 Looper 已经帮我们处理好手尾了。如自己手动回收会怎样？因为 Looper 在调用 msg.recycle() 前并没有作检查，不会对进入池中的对象是否已存在进行检查，一旦同一个 Message 被回收两次，对象池将会被破坏。
-
+3. 可以在初始化的过程中计算好的变量尽量在开始处理好或者第一次用的时候处理，不要在使用运行过程中反复计算。
+4. JNI编程中，java和JNI之间传递数据尽量使用primary type，不要为了方便直接返回数据对象，这样会导致创建很多java临时对象，浪费内存，可以考虑回调的方式传回多个返回值，参考[android jni return multiple variables](http://stackoverflow.com/questions/29043872/android-jni-return-multiple-variables)，对于调用JNI接口同Java方法的性能对比，参考[这里](http://stackoverflow.com/questions/13973035/what-is-the-quantitative-overhead-of-making-a-jni-call)
+5. JNI中，在初始化JNI_OnLoad的时候把Java类的jclass引用、以及MethodID获取到并缓存成全局变量，后期直接使用。
 
 ## 术语
 

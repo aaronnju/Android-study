@@ -1,13 +1,145 @@
 # java.util.concurrent
-www
+
+## Volatile
+[Java 理论与实践: 正确使用 Volatile 变量](http://www.ibm.com/developerworks/cn/java/j-jtp06197.html)
+
+锁提供了两种主要特性：互斥（mutual exclusion） 和可见性（visibility）。  
+Volatile 变量具有 synchronized 的可见性特性，但是不具备原子特性。这就是说线程能够自动发现 volatile 变量的最新值。  
+与锁相比，Volatile 变量是一种非常简单但同时又非常脆弱的同步机制，它在某些情况下将提供优于锁的性能和伸缩性。如果严格遵循 volatile 的使用条件 —— 即变量真正独立于其他变量和自己以前的值 —— 在某些情况下可以使用 volatile 代替 synchronized 来简化代码。然而，使用 volatile 的代码往往比使用锁的代码更加容易出错。  
+
+**正确使用 volatile 的模式**  
+
+- 模式 #1：状态标志 
+
+		volatile boolean shutdownRequested;
+		
+		...
+		
+		public void shutdown() { shutdownRequested = true; }// 在另一个线程中调用 shutdown() 方法 
+		
+		public void doWork() { 
+		    while (!shutdownRequested) { 
+		        // do stuff
+		    }
+		}
+
+- 模式 #2：一次性安全发布（one-time safe publication）  
+解决双重检查锁定（double-checked-locking）这类问题  
+
+		public class BackgroundFloobleLoader {
+		    public volatile Flooble theFlooble;
+		
+		    public void initInBackground() {
+		        // do lots of stuff
+		        theFlooble = new Flooble();  // this is the only write to theFlooble
+		    }
+		}
+		
+		public class SomeOtherClass {
+		    public void doWork() {
+		        while (true) { 
+		            // do some stuff...
+		            // use the Flooble, but only if it is ready
+		            if (floobleLoader.theFlooble != null) 
+		                doSomething(floobleLoader.theFlooble);
+		        }
+		    }
+		}
+如果 theFlooble 引用不是 volatile 类型，doWork() 中的代码在解除对 theFlooble 的引用时，将会得到一个不完全构造的 Flooble。
+
+- 模式 #3：独立观察（independent observation）  
+		没太理解 :(  
+
+		public class UserManager {
+		    public volatile String lastUser;
+		
+		    public boolean authenticate(String user, String password) {
+		        boolean valid = passwordIsValid(user, password);
+		        if (valid) {
+		            User u = new User();
+		            activeUsers.add(u);
+		            lastUser = user;
+		        }
+		        return valid;
+		    }
+		}
+- 模式 #4：“volatile bean” 模式
+- 模式 #5：开销较低的读－写锁策略
+
 ## synchronized
+可以解决原子性（atomicity）和 可见性（visibility）两个问题
+
+[谨慎的使用synchronized(this)](http://stackoverflow.com/questions/309631/what-cases-require-synchronized-method-access-in-java#309677)：  
+
+1. 此实例的所有方法都用同一把锁，降低性能  
+2. 这个锁用户也可以访问不安全，容易引起死锁：  
+
+		MyClass c = new MyClass();
+		synchronized(c) {
+		    ...
+		}
+这种用法会很少有人用么？不是，你要遍历synchronizedMap的时候，java文档明确要求你要对其锁定。
+   
+		//It is imperative that the user manually synchronize on the returned
+		// map when iterating over any of its collection views:	
+		 Map m = Collections.synchronizedMap(new HashMap());
+		     ...
+		 Set s = m.keySet();  // Needn't be in synchronized block
+		     ...
+		 synchronized (m) {  // Synchronizing on m, not s!
+		     Iterator i = s.iterator(); // Must be in synchronized block
+		     while (i.hasNext())
+		         foo(i.next());
+		 }
+
+	推荐使用自己的私有变量做锁，可以参考SynchronizedMap源码，SynchronizedMap没有使用synchronized(this)，而是自己定义了final Object mutex;.或者如下：   
+
+		public class MyClass {
+		    private int instanceVar;
+		    private final Object lock = new Object();     // must be final!	
+		    public void setInstanceVar() {
+		        synchronized(lock) {
+		            instanceVar++;
+		        }
+		    }
+		}
+
+Object wait(), notify()  
+<http://www.cnblogs.com/x_wukong/p/4009709.html>  
+在JAVA中的Object类型中，都是带有一个内存锁的，在有线程获取该内存锁后，其它线程无法访问该内存，从而实现JAVA中简单的同步、互斥操作。如果只是简单的想要实现在JAVA中的线程互斥，使用synchronized。但如果需要在线程间相互唤醒的话就需要借助Object.wait(), Object.nofity()了。
+Obj.wait(),Obj.notify必须在synchronized(Obj){...}语句块内。wait就是说线程在获取对象锁后，主动释放对象锁，同时本线程休眠。直到有其它线程调用对象的notify()唤醒该线程，才能继续获取对象锁，并继续执行。要注意的是notify()调用后，并不是马上就释放对象锁的，而是在相应的synchronized(){}语句块执行结束，自动释放锁后。Thread.sleep()与Object.wait()二者都可以暂停当前线程，释放CPU控制权，主要的区别在于Object.wait()在释放CPU同时，释放了对象锁的控制。
+例子：建立三个线程，A线程打印10次A，B线程打印10次B,C线程打印10次C，要求线程同时运行，交替打印10次ABC。
 
 ## ReentrantLock
-一个可重入的互斥锁定 Lock，它具有与使用 synchronized 方法和语句所访问的隐式监视器锁定相同的一些基本行为和语义，但功能更强大。
+一个可重入的互斥锁定 Lock，它具有与使用 synchronized 方法和语句所访问的隐式监视器锁定相同的一些基本行为和语义，但功能更强大。reentrant锁意味着它有一个与锁相关的获取计数器，如果拥有锁的某个线程再次得到锁，那么获取计数器就加1，然后锁需要被释放两次才能获得真正释放。
+正在等候获得锁的线程，也无法通过投票得到锁，如果不想等下去，也就没法得到锁
+它拥有与 synchronized 相同的并发性和内存语义，但是添加了  
+
+1. lock，<https://www.zhihu.com/question/36771163/answer/68974735>
+	1. 如果该锁没有被另一个线程保持，则获取该锁并立即返回，将锁的保持计数设置为 1。
+	2. 如果当前线程已经保持该锁，则将保持计数加 1，并且该方法立即返回。
+	3. 	如果该锁被另一个线程保持，则出于线程调度的目的，禁用当前线程，并且在获得锁之前，该线程将一直处于休眠状态，此时锁保持计数被设置为 1。
+2. tryLock(long timeout, TimeUnit unit),定时锁等候-在等候时间内未获取锁，线程会自己中断
+2. lockInterruptibly可中断锁等候,线程等候可以自己中断，也可以由别的线程中断
+	1. 如果当前线程未被中断，则获取锁。 
+	2. 如果该锁没有被另一个线程保持，则获取该锁并立即返回，将锁的保持计数设置为 1。 
+	3. 如果当前线程已经保持此锁，则将保持计数加 1，并且该方法立即返回。 
+	4. 如果锁被另一个线程保持，则出于线程调度目的，禁用当前线程，并且在发生以下两种情况之一以前，该线程将一直处于休眠状态： 
+		1. 锁由当前线程获得；或者 
+		2. 其他某个线程中断当前线程。 
+	3. 如果当前线程获得该锁，则将锁保持计数设置为 1。 如果当前线程： 
+		1. 在进入此方法时已经设置了该线程的中断状态；或者 
+		2. 在等待获取锁的同时被中断。 
+   	则抛出 InterruptedException，并且清除当前线程的已中断状态。 
+
+3. 锁投票 ??
+
+
 ReentrantLock 将由最近成功获得锁定，并且还没有释放该锁定的线程所拥有。当锁定没有被另一个线程所拥有时，调用 lock 的线程将成功获取该锁定并返回。如果当前线程已经拥有该锁定，此方法将立即返回。可以使用 isHeldByCurrentThread() 和 getHoldCount() 方法来检查此情况是否发生。
 
 - 此类的构造方法接受一个可选的公平参数。设置为 true时，在多个线程的争用下，这些锁定倾向于将访问权授予等待时间最长的线程。否则此锁定将无法保证任何特定访问顺序。与采用默认设置（使用不公平锁定）相比，使用公平锁定的程序在许多线程访问时表现为很低的总体吞吐量（即速度很慢，常常极其慢），但是在获得锁定和保证锁定分配的均衡性时差异较小。不过要注意的是，公平锁定不能保证线程调度的公平性。因此，使用公平锁定的众多线程中的一员可能获得多倍的成功机会，这种情况发生在其他活动线程没有被处理并且目前并未持有锁定时。还要注意的是，未定时的 tryLock 方法并没有使用公平设置。因为即使其他线程正在等待，只要该锁定是可用的，此方法就可以获得成功。
-- 建议总是，使用 try 块来调用 lock
+
+- 建议总是，**使用 try 块来调用 lock**。:synchronized是在JVM层面上实现的，如果在代码执行时出现异常，JVM会自动释放锁；lock是通过代码实现的，要保证锁一定会被释放，就必须将unlock放到finally块中
 
 > 	public class MyThread extends Thread{
 > 	    TestReentrantLock lock;
@@ -45,6 +177,10 @@ ReentrantLock 将由最近成功获得锁定，并且还没有释放该锁定的
 > 	        }
 > 	    }
 > 	}
+
+**条件变量Condition**  
+条件（也称为条件队列 或条件变量）为线程提供了一个含义，以便在某个状态条件现在可能为 true 的另一个线程通知它之前，一直挂起该线程（即让其“等待”）。Condition接口await*对应于Object.wait，signal对应于Object.notify，signalAll对应于Object.notifyAll。参考ArrayBlockingQueue的实现
+
 
 ## **[CountDownLatch(比赛计时)](http://tool.oschina.net/uploads/apidocs/jdk-zh/java/util/concurrent/CountDownLatch.html)** 
 - 一个或多个线程一直等待，直到一组正在其他线程中执行的操作完成通知。
@@ -213,7 +349,7 @@ Semaphore 通常用于限制可以访问某些资源（物理或逻辑的）的�
 	    }
 	    public static void main(String[] a) throws Exception{
 	        ExecutorService service = Executors.newCachedThreadPool();
-	        CompletionService<Stringcompletion=new ExecutorCompletionService<String>(service);
+	        CompletionService<String> completion=new ExecutorCompletionService<String>(service);
 	        for(int i=0;i<10;i++){
 	            completion.submit(new MyCompletionService(i));
 	        }
@@ -269,3 +405,50 @@ Executors 类为此包中所提供的 ScheduledExecutorService 实现提供了�
 	        }, 30, SECONDS);
 	    }
 	}
+
+## Future
+新建一个线程执行耗时操作，同时返回一个Future对象给客户端，此时客户端得不到运行结束之后的结果，可以去做其他事情，最后再从future中拿结果  
+
+Future主要接口  
+
+	public interface Future<V> {
+	    boolean cancel(boolean mayInterruptIfRunning);
+	    boolean isCancelled();
+	    boolean isDone();
+	    V get() throws InterruptedException, ExecutionException;
+	    V get(long timeout, TimeUnit unit)
+	        throws InterruptedException, ExecutionException, TimeoutException;
+	}
+
+- cancel方法用来取消任务，如果取消任务成功则返回true，如果取消任务失败则返回false。参数mayInterruptIfRunning表示是否允许取消正在执行却没有执行完毕的任务，如果设置true，则表示可以取消正在执行过程中的任务。如果任务已经完成，则无论mayInterruptIfRunning为true还是false，此方法肯定返回false，即如果取消已经完成的任务会返回false；如果任务正在执行，若mayInterruptIfRunning设置为true，则返回true，若mayInterruptIfRunning设置为false，则返回false；如果任务还没有执行，则无论mayInterruptIfRunning为true还是false，肯定返回true。
+- isCancelled方法表示任务是否被取消成功，如果在任务正常完成前被取消成功，则返回 true。
+- isDone方法表示任务是否已经完成，若任务完成，则返回true；
+- get()方法用来获取执行结果，这个方法会产生阻塞，会一直等到任务执行完毕才返回；
+- get(long timeout, TimeUnit unit)用来获取执行结果，如果在指定时间内，还没获取到结果，就直接返回null。
+
+
+使用示例
+
+	public class CallableAndFuture {
+	    public static void main(String[] args) {
+	        Callable<Integer> callable = new Callable<Integer>() {
+	            public Integer call() throws Exception {
+	                return new Random().nextInt(100);
+	            }
+	        };
+	        FutureTask<Integer> future = new FutureTask<Integer>(callable);
+	        new Thread(future).start();
+	        try {
+	            Thread.sleep(5000);// 可能做一些事情
+	            System.out.println(future.get());
+	        } catch (InterruptedException e) {
+	            e.printStackTrace();
+	        } catch (ExecutionException e) {
+	            e.printStackTrace();
+	        }
+	    }
+	}
+
+
+## ReentrantReadWriteLock
+读写锁维护了一对相关的锁，一个用于只读操作，一个用于写入操作。只要没有writer，读取锁可以由多个reader线程同时保持。写入锁是独占的。
